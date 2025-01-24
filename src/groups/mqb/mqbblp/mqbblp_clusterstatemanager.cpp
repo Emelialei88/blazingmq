@@ -1485,8 +1485,7 @@ void ClusterStateManager::processQueueAssignmentRequest(
 void ClusterStateManager::processQueueAssignmentAdvisory(
     const bmqp_ctrlmsg::ControlMessage& message,
     mqbnet::ClusterNode*                source,
-    bool                                delayed,
-    bool                                fromLeaderAdvisory)
+    bool                                delayed)
 {
     // executed by the cluster *DISPATCHER* thread
 
@@ -1695,7 +1694,7 @@ void ClusterStateManager::processQueueAssignmentAdvisory(
             }
         }
         else {
-            if (delayed || fromLeaderAdvisory) {
+            if (delayed) {
                 AppInfos appIdInfos(d_allocator_p);
 
                 mqbc::ClusterUtil::parseQueueInfo(&appIdInfos,
@@ -1707,7 +1706,7 @@ void ClusterStateManager::processQueueAssignmentAdvisory(
                                        queueInfo.partitionId(),
                                        appIdInfos);
             }
-            // When this function is called from
+            // When this function is not buffered, called from
             // processQueueAssignmentAdvisory, assignQueue will
             // be triggered through mqbblp::ClusterStateManager::onCommit
         }
@@ -2162,8 +2161,7 @@ void ClusterStateManager::processLeaderAdvisory(
 
     processQueueAssignmentAdvisory(controlMsg,
                                    source,
-                                   false /* not delayed */,
-                                   true /* called from leaderAdvisory */);
+                                   false /* not delayed */);
 
     // Leader status and sequence number are updated unconditionally.  It may
     // have been updated by one of the routines called earlier in this method,
