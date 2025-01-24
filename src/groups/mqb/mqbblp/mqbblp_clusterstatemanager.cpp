@@ -82,9 +82,10 @@ void ClusterStateManager::onCommit(
 
     // NOTE: Even when using old workflow, we still apply all advisories to the
     // CSL. We just don't invoke the commit callbacks.
-    // Make an exception for QueueUpdateAdvisory
+    // Make an exception for QueueAssignmentAdvisory
     if (!d_clusterConfig.clusterAttributes().isCSLModeEnabled() &&
-        !clusterMessage.choice().isQueueUpdateAdvisoryValue()) {
+        !clusterMessage.choice().isQueueUpdateAdvisoryValue() &&
+        !clusterMessage.choice().isQueueAssignmentAdvisoryValue()) {
         return;  // RETURN
     }
 
@@ -1484,7 +1485,8 @@ void ClusterStateManager::processQueueAssignmentRequest(
 void ClusterStateManager::processQueueAssignmentAdvisory(
     const bmqp_ctrlmsg::ControlMessage& message,
     mqbnet::ClusterNode*                source,
-    bool                                delayed)
+    bool                                delayed,
+    bool                                fromLeaderAdvisory)
 {
     // executed by the cluster *DISPATCHER* thread
 
@@ -1693,16 +1695,21 @@ void ClusterStateManager::processQueueAssignmentAdvisory(
             }
         }
         else {
-            AppInfos appIdInfos(d_allocator_p);
+            if (delayed || fromLeaderAdvisory) {
+                AppInfos appIdInfos(d_allocator_p);
 
-            mqbc::ClusterUtil::parseQueueInfo(&appIdInfos,
-                                              queueInfo,
-                                              d_allocator_p);
+                mqbc::ClusterUtil::parseQueueInfo(&appIdInfos,
+                                                  queueInfo,
+                                                  d_allocator_p);
 
-            d_state_p->assignQueue(uri,
-                                   queueKey,
-                                   queueInfo.partitionId(),
-                                   appIdInfos);
+                d_state_p->assignQueue(uri,
+                                       queueKey,
+                                       queueInfo.partitionId(),
+                                       appIdInfos);
+            }
+            // When this function is called from
+            // processQueueAssignmentAdvisory, assignQueue will
+            // be triggered through mqbblp::ClusterStateManager::onCommit
         }
 
         BALL_LOG_INFO << d_cluster_p->description()
@@ -2153,7 +2160,10 @@ void ClusterStateManager::processLeaderAdvisory(
     queueAsgnAdv.sequenceNumber() = advisory.sequenceNumber();
     queueAsgnAdv.queues()         = advisory.queues();
 
-    processQueueAssignmentAdvisory(controlMsg, source);
+    processQueueAssignmentAdvisory(controlMsg,
+                                   source,
+                                   false /* not delayed */,
+                                   true /* called from leaderAdvisory */);
 
     // Leader status and sequence number are updated unconditionally.  It may
     // have been updated by one of the routines called earlier in this method,
